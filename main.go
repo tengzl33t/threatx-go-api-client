@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 )
@@ -39,16 +40,25 @@ func getApiEnvHost(apiEnv string) string {
 }
 
 func sites(apiEnv string, payloads []map[string]interface{}) []responseStruct {
-	//availableCommands := []string{
-	//	"list",
-	//	"new",
-	//	"get",
-	//	"delete",
-	//	"update",
-	//	"unset",
-	//}
+	availableCommands := []string{
+		"list",
+		"new",
+		"get",
+		"delete",
+		"update",
+		"unset",
+	}
+	methodName := "sites"
+	url := fmt.Sprintf("%s%s/%s", getApiEnvHost(apiEnv), getApiVerLink(2), methodName)
+	return validateRequests(url, payloads, availableCommands, methodName)
+}
 
-	url := fmt.Sprintf("%s%s/sites", getApiEnvHost(apiEnv), getApiVerLink(2))
+func validateRequests(url string, payloads []map[string]interface{}, availableCommands []string, caller string) []responseStruct {
+	for _, payload := range payloads {
+		if !slices.Contains(availableCommands, payload["command"].(string)) {
+			panic(fmt.Sprintf("Incorrect command '%s' found in method '%s'", payload["command"].(string), caller))
+		}
+	}
 	return processRequests(url, payloads)
 }
 
@@ -89,8 +99,7 @@ func RunClient(function string, apiEnv string, apiKey string, payloads []map[str
 		"sites": sites,
 	}
 	if _, ok := functionMap[function]; !ok {
-		println("Function not found")
-		return
+		panic("Function not found")
 	}
 
 	functionCall := functionMap[function](apiEnv, payloads)
@@ -127,10 +136,14 @@ func processRequests(url string, payloads []map[string]interface{}) []responseSt
 		wg.Add(1)
 		go func() {
 			preparedJsonPayload, _ := json.Marshal(payload)
-			rawResponse, err := httpClient.Post(
-				url, "application/json",
-				bytes.NewBuffer(preparedJsonPayload),
-			)
+			request, err := http.NewRequest("POST", url, bytes.NewBuffer(preparedJsonPayload))
+			if err != nil {
+				panic(err)
+			}
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("User-Agent", "ThreatX-Go-API-Client")
+
+			rawResponse, err := httpClient.Do(request)
 			if err != nil {
 				panic(err)
 			}
