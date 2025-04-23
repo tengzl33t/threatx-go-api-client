@@ -18,6 +18,7 @@ type responseStruct struct {
 	valid      bool
 	body       interface{}
 	statusCode int
+	marker     string
 }
 
 func getApiVerLink(version uint8) string {
@@ -40,7 +41,7 @@ func getApiEnvHost(apiEnv string) string {
 	return fmt.Sprintf("https://%s.%s", apiEnv, domainPart)
 }
 
-func sites(apiEnv string, headers *map[string]string, payloads []map[string]interface{}) []responseStruct {
+func sites(apiEnv string, headers map[string]string, payloads []map[string]interface{}) []responseStruct {
 	availableCommands := []string{
 		"list",
 		"new",
@@ -54,7 +55,7 @@ func sites(apiEnv string, headers *map[string]string, payloads []map[string]inte
 	return validateRequests(url, headers, payloads, availableCommands, methodName)
 }
 
-func validateRequests(url string, headers *map[string]string, payloads []map[string]interface{}, availableCommands []string, caller string) []responseStruct {
+func validateRequests(url string, headers map[string]string, payloads []map[string]interface{}, availableCommands []string, caller string) []responseStruct {
 	for _, payload := range payloads {
 		if !slices.Contains(availableCommands, payload["command"].(string)) {
 			panic(fmt.Sprintf("Incorrect command '%s' found in method '%s'", payload["command"].(string), caller))
@@ -90,13 +91,13 @@ func login(apiEnv string, apiKey string) string {
 	return response.body.(map[string]interface{})["token"].(string)
 }
 
-func RunClient(function string, apiEnv string, apiKey string, headers *map[string]string, payloads []map[string]interface{}) {
+func RunClient(function string, apiEnv string, apiKey string, headers map[string]string, payloads []map[string]interface{}) {
 	token := login(apiEnv, apiKey)
 	for _, payload := range payloads {
 		payload["token"] = token
 	}
 
-	functionMap := map[string]func(apiEnv string, headers *map[string]string, payloads []map[string]interface{}) []responseStruct{
+	functionMap := map[string]func(apiEnv string, headers map[string]string, payloads []map[string]interface{}) []responseStruct{
 		"sites": sites,
 	}
 	if _, ok := functionMap[function]; !ok {
@@ -119,12 +120,12 @@ func main() {
 		"prod",
 		"",
 		nil,
-		[]map[string]interface{}{{"command": "list", "customer_name": "threatx"}},
+		[]map[string]interface{}{{"command": "list", "customer_name": "soctest"}},
 	)
 
 }
 
-func processRequests(url string, headers *map[string]string, payloads []map[string]interface{}) []responseStruct {
+func processRequests(url string, headers map[string]string, payloads []map[string]interface{}) []responseStruct {
 	httpClient := getHttpClient()
 
 	semaphore := make(chan struct{}, 100)
@@ -145,10 +146,8 @@ func processRequests(url string, headers *map[string]string, payloads []map[stri
 			request.Header.Set("Content-Type", "application/json")
 			request.Header.Set("User-Agent", "ThreatX-Go-API-Client")
 
-			if headers != nil {
-				for key, value := range *headers {
-					request.Header.Set(key, value)
-				}
+			for key, value := range headers {
+				request.Header.Set(key, value)
 			}
 
 			rawResponse, err := httpClient.Do(request)
@@ -165,14 +164,21 @@ func processRequests(url string, headers *map[string]string, payloads []map[stri
 
 			err = json.Unmarshal(preparedBody, &jsonData)
 			if err != nil {
-				panic(err)
+				// TODO: maybe validate if response is from TX API
+				panic(fmt.Sprintf(
+					"Could not parse the API response.\nError: %s\nRequest ID: %s.",
+					err.Error(),
+					rawResponse.Header["X-Request-Id"][0],
+				))
 			}
-			println(jsonData["Ok"])
+
+			payloadMarker, _ := payload["marker_var"].(string)
 
 			responseStruct := responseStruct{
 				valid:      rawResponse.StatusCode == 200,
 				body:       jsonData["Ok"],
 				statusCode: rawResponse.StatusCode,
+				marker:     payloadMarker,
 			}
 
 			responses = append(responses, responseStruct)
