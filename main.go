@@ -1,5 +1,6 @@
 package main
 
+import "C"
 import (
 	"bytes"
 	"crypto/tls"
@@ -39,7 +40,7 @@ func getApiEnvHost(apiEnv string) string {
 	return fmt.Sprintf("https://%s.%s", apiEnv, domainPart)
 }
 
-func sites(apiEnv string, payloads []map[string]interface{}) []responseStruct {
+func sites(apiEnv string, headers *map[string]string, payloads []map[string]interface{}) []responseStruct {
 	availableCommands := []string{
 		"list",
 		"new",
@@ -50,16 +51,16 @@ func sites(apiEnv string, payloads []map[string]interface{}) []responseStruct {
 	}
 	methodName := "sites"
 	url := fmt.Sprintf("%s%s/%s", getApiEnvHost(apiEnv), getApiVerLink(2), methodName)
-	return validateRequests(url, payloads, availableCommands, methodName)
+	return validateRequests(url, headers, payloads, availableCommands, methodName)
 }
 
-func validateRequests(url string, payloads []map[string]interface{}, availableCommands []string, caller string) []responseStruct {
+func validateRequests(url string, headers *map[string]string, payloads []map[string]interface{}, availableCommands []string, caller string) []responseStruct {
 	for _, payload := range payloads {
 		if !slices.Contains(availableCommands, payload["command"].(string)) {
 			panic(fmt.Sprintf("Incorrect command '%s' found in method '%s'", payload["command"].(string), caller))
 		}
 	}
-	return processRequests(url, payloads)
+	return processRequests(url, headers, payloads)
 }
 
 func getHttpClient() *http.Client {
@@ -80,7 +81,7 @@ func login(apiEnv string, apiKey string) string {
 	var jsonValues []map[string]interface{}
 	jsonValues = append(jsonValues, jsonValue)
 
-	response := processRequests(url, jsonValues)[0]
+	response := processRequests(url, nil, jsonValues)[0]
 	loginStatus := response.body.(map[string]interface{})["status"].(bool)
 	if !loginStatus {
 		panic("Could not login with key provided")
@@ -89,20 +90,20 @@ func login(apiEnv string, apiKey string) string {
 	return response.body.(map[string]interface{})["token"].(string)
 }
 
-func RunClient(function string, apiEnv string, apiKey string, payloads []map[string]interface{}) {
+func RunClient(function string, apiEnv string, apiKey string, headers *map[string]string, payloads []map[string]interface{}) {
 	token := login(apiEnv, apiKey)
 	for _, payload := range payloads {
 		payload["token"] = token
 	}
 
-	functionMap := map[string]func(apiEnv string, payloads []map[string]interface{}) []responseStruct{
+	functionMap := map[string]func(apiEnv string, headers *map[string]string, payloads []map[string]interface{}) []responseStruct{
 		"sites": sites,
 	}
 	if _, ok := functionMap[function]; !ok {
 		panic("Function not found")
 	}
 
-	functionCall := functionMap[function](apiEnv, payloads)
+	functionCall := functionMap[function](apiEnv, headers, payloads)
 	fmt.Printf("%v\n", functionCall)
 
 }
@@ -117,12 +118,13 @@ func main() {
 		"sites",
 		"prod",
 		"",
+		nil,
 		[]map[string]interface{}{{"command": "list", "customer_name": "threatx"}},
 	)
 
 }
 
-func processRequests(url string, payloads []map[string]interface{}) []responseStruct {
+func processRequests(url string, headers *map[string]string, payloads []map[string]interface{}) []responseStruct {
 	httpClient := getHttpClient()
 
 	semaphore := make(chan struct{}, 100)
@@ -142,6 +144,12 @@ func processRequests(url string, payloads []map[string]interface{}) []responseSt
 			}
 			request.Header.Set("Content-Type", "application/json")
 			request.Header.Set("User-Agent", "ThreatX-Go-API-Client")
+
+			if headers != nil {
+				for key, value := range *headers {
+					request.Header.Set(key, value)
+				}
+			}
 
 			rawResponse, err := httpClient.Do(request)
 			if err != nil {
