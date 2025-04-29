@@ -9,19 +9,32 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 )
 
-func validateRequests(
-	url string, headers map[string]string, payloads []map[string]interface{}, availableCommands []string,
-	token string, caller string, apiEnv string, apiKey string,
+func getURL(apiEnv string, apiVer uint8, methodName string) string {
+	return fmt.Sprintf("%s%s/%s", getApiEnvHost(apiEnv), getApiVerLink(apiVer), methodName)
+}
+
+func SendRequests(
+	endpoint string, apiEnv string, headers map[string]string,
+	payloads []map[string]interface{}, token string, apiKey string,
 ) []ResponseStruct {
+	endpointEntry, ok := getEndpointMap()[endpoint]
+	if !ok {
+		panic(fmt.Sprintf("Endpoint '%s' not found", endpoint))
+	}
+
+	methodName := strings.ReplaceAll(endpoint, "v2", "")
+
 	for _, payload := range payloads {
-		if !slices.Contains(availableCommands, payload["command"].(string)) {
-			panic(fmt.Sprintf("Incorrect command '%s' found in method '%s'", payload["command"].(string), caller))
+		if !slices.Contains(endpointEntry[1].([]string), payload["command"].(string)) {
+			panic(fmt.Sprintf("Incorrect command '%s' found in method '%s'", payload["command"].(string), methodName))
 		}
 	}
-	return processRequests(url, headers, payloads, token, apiEnv, apiKey)
+
+	return processRequests(getURL(apiEnv, uint8(endpointEntry[0].(int)), methodName), headers, payloads, token, apiEnv, apiKey)
 }
 
 func Login(apiEnv string, apiKey string) string {
