@@ -31,11 +31,7 @@ func SendRequests(
 	endpoint string, apiEnv string, headers map[string]string,
 	payloads []map[string]interface{}, token string, apiKey string,
 ) []ResponseStruct {
-	endpointEntry, ok := getEndpointMap()[endpoint]
-	if !ok {
-		panic(fmt.Sprintf("Endpoint '%s' not found", endpoint))
-	}
-
+	endpointEntry := getEndpoint(endpoint)
 	methodName := strings.ReplaceAll(endpoint, "v2", "")
 
 	for _, payload := range payloads {

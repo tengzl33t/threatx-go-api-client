@@ -12,8 +12,10 @@ Author: tengzl33t
 
 package internal
 
-func getEndpointMap() map[string][2]interface{} {
-	return map[string][2]interface{}{
+import "fmt"
+
+func getEndpoint(endpoint string) [2]interface{} {
+	endpointMap := map[string][2]interface{}{
 		"apikeys": {
 			2, []string{
 				"list",
@@ -243,4 +245,10 @@ func getEndpointMap() map[string][2]interface{} {
 			},
 		},
 	}
+
+	endpointEntry, ok := endpointMap[endpoint]
+	if !ok {
+		panic(fmt.Sprintf("Endpoint '%s' not found", endpoint))
+	}
+	return endpointEntry
 }
