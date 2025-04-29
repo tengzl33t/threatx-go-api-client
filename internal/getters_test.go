@@ -6,7 +6,7 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 SPDX-License-Identifier: MPL-2.0
 
 File: getters_test.go
-Description: Tests for getter.go
+Description: Tests for getters.go
 Author: tengzl33t
 */
 
